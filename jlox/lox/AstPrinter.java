@@ -1,6 +1,6 @@
 package lox;
 
-public class AstPrinter implements Visitor<String> { 
+public class AstPrinter implements Expression.Visitor<String> { 
     
 
     public void print(Expression expr) {
@@ -32,6 +32,16 @@ public class AstPrinter implements Visitor<String> {
     public String visitLiteral(Literal expression) {
         return expression.value.toString(); 
     } 
+
+    @Override
+    public String visitVariable(Variable expression) {
+        return expression.name.lexeme;
+    }
+
+    @Override
+    public String visitAssign(Assign expression) {
+        return "( = " + expression.name.lexeme + " " + expression.value.accept(this) + ")";
+    }
 
 
 }

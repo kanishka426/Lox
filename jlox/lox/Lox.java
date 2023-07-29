@@ -41,12 +41,13 @@ class Lox{
         Scanner scanner = new Scanner(source);
         List<Token> tokens = scanner.scanTokens();
         Parser parser = new Parser(tokens);
-        Interpreter interpreter = new Interpreter();
-        AstPrinter printer = new AstPrinter();
-        Expression expr = parser.parse(); 
-        printer.print(expr); 
-        String result = interpreter.interpret(expr);  
-        System.out.println(result);
+        List<Statement> program = parser.parse(); 
+        if(!hadError) {
+            Interpreter interpreter = new Interpreter(); 
+            try {
+                interpreter.interpret(program);
+            } catch(InterpreterError error) {}        
+        }  
     }
 
     private static void runFile(String path) throws IOException {
@@ -65,6 +66,7 @@ class Lox{
             if(line.equals("")) break;
             run(line);
             hadError = false;
+            hadRuntimeError = false;
         }
 
     }

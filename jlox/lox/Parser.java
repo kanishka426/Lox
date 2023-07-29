@@ -1,5 +1,6 @@
 package lox;
 import java.util.List; 
+import java.util.ArrayList;
 
 public class Parser {
     private int current = 0;
@@ -9,28 +10,290 @@ public class Parser {
         this.tokens = tokens;
     }
 
-    public Expression parse() {
-        Expression expr_tree;
-        
-        try{
-            expr_tree = expression();
-        } catch (ParseError error) {
-            return null;
+    public List<Statement> parse() {
+        List<Statement> program = new ArrayList<>();
+        while(!isAtEnd()) {
+            try {
+                program.add(declaration());
+            } catch(ParseError error) {
+                continue;
+            }
         }
         
         if(!isAtEnd()) {
             return null;
         }
-        return expr_tree;
+        return program;
+    }
+
+
+    private Statement declaration() {
+        if(match(TokenType.VAR)) {
+            if(match(TokenType.IDENTIFIER)) {
+                Token name = previous(); 
+                if(match(TokenType.EQUAL)) {
+                    Expression expr = expression(); 
+                    checkSemiColon();
+                    return new Var(name, expr); 
+                } else {
+                    checkSemiColon();
+                    return new Var(name, null); 
+                }
+            } else {
+                throw error(previous(), "Expected Identifier for variable declaration.");    
+            }
+        } else if(match(TokenType.FUN)) {
+            if(match(TokenType.IDENTIFIER)) {
+                Token name = previous(); 
+                List<Token> parameters = new ArrayList<>();
+                while(!match(TokenType.RIGHT_PAREN)) {
+                    Expression para = primary(); 
+                    if(para instanceof Variable) {
+                        parameters.add(((Variable) para).name);
+                    } else {
+                        error(previous(), "Parameters can only be identifiers and not other expressions.");
+                    }
+                    if(peek().type != TokenType.RIGHT_PAREN) {
+                        consume(TokenType.COMMA, "Expected a ',' to separate the parameters.");
+                    }
+                }
+                consume(TokenType.LEFT_BRACE, "Expected a '{' token.");
+                List<Statement> funCode = new ArrayList<>();
+                while(!match(TokenType.RIGHT_BRACE) && !isAtEnd()) {
+                    try {
+                        funCode.add(declaration());
+                    } catch(ParseError error) {
+                        continue;
+                    }
+                }
+                if(isAtEnd() && previous().type != TokenType.RIGHT_BRACE) {
+                    throw error(previous(), "Expected a '{' token."); 
+                }
+
+                return new LoxFunction(name, parameters, funCode); 
+
+            }
+        }
+
+        return block();
+    }
+
+    private Statement block() {
+        if(match(TokenType.LEFT_BRACE)) {
+            Token left_brace = previous();
+            List<Statement> statements = new ArrayList<>();
+
+            while(!match(TokenType.RIGHT_BRACE) && !isAtEnd()) {
+                try {
+                    statements.add(block());
+                } catch (ParseError error) {
+                    continue;
+                }
+            } 
+            if(isAtEnd() && previous().type != TokenType.RIGHT_BRACE) {
+                throw error(left_brace, "Unpaired brace found."); 
+            }
+
+            return new Block(statements); 
+        }
+
+        return statement();
+
+    }
+
+
+    private Statement statement() {
+
+        if(match(TokenType.FOR)) {
+            consume(TokenType.LEFT_PAREN, "Expected a '(' token.");
+
+            Var init = forDeclaration();
+            checkSemiColon();
+            
+            Expression forClause = null;
+            if(peek().type != TokenType.SEMICOLON) {
+                try {
+                    forClause = expression();
+                } catch(ParseError error) {
+                    
+                    throw error;
+                } 
+            }
+            checkSemiColon();
+            
+            Expression forComp = null; 
+            if(peek().type != TokenType.RIGHT_PAREN) forComp = expression(); 
+            
+            consume(TokenType.RIGHT_PAREN, "Expected a ')' token.");
+            consume(TokenType.LEFT_BRACE, "Exprected a '{' token");
+            List<Statement> forCode = new ArrayList<>(); 
+            while(!match(TokenType.RIGHT_BRACE) && !isAtEnd()) {
+                try {
+                    forCode.add(declaration());
+                } catch(ParseError error) {
+                    continue;
+                }
+            }
+            if(isAtEnd() && previous().type != TokenType.RIGHT_BRACE) {
+                throw error(previous(), "Expected a '{' token."); 
+            }   
+            
+            return new For(init, forClause, forComp, forCode);
+
+
+        }
+
+        if(match(TokenType.WHILE)) {
+            consume(TokenType.LEFT_PAREN, "Expected a '(' token.");
+            Expression whileClause = expression();
+            consume(TokenType.RIGHT_PAREN, "Expected a ')' token."); 
+            consume(TokenType.LEFT_BRACE, "Exprected a '{' token");
+            List<Statement> whileCode = new ArrayList<>();
+            while(!match(TokenType.RIGHT_BRACE) && !isAtEnd()) {
+                try{
+                    whileCode.add(declaration()); 
+                } catch(ParseError error) {
+                    continue;
+                }
+            }
+
+            if(isAtEnd() && previous().type != TokenType.RIGHT_BRACE) {
+                throw error(previous(), "Expected a '{' token."); 
+            }   
+
+
+            return new While(whileClause, whileCode);
+        }
+        
+        
+        if(match(TokenType.IF)) {
+            boolean hasElif = false;
+            boolean hasElse = false;
+            consume(TokenType.LEFT_PAREN, "Expected a '(' token.");
+            Expression ifClause = expression();
+            consume(TokenType.RIGHT_PAREN, "Expected a ')' token");
+            consume(TokenType.LEFT_BRACE, "Exprected a '{' token");
+            List<Statement> ifCode = new ArrayList<>();
+            while(!match(TokenType.RIGHT_BRACE) && !isAtEnd()) {
+                try{
+                    if(peek().type == TokenType.VAR) {
+                        throw error(previous(), "Can't declare variables in an 'if' block.");
+                    }
+                    ifCode.add(block()); 
+                } catch(ParseError error) {
+                    continue;
+                }
+            } 
+
+            if(isAtEnd() && previous().type != TokenType.RIGHT_BRACE) {
+                throw error(previous(), "Expected a '{' token."); 
+            }   
+            
+
+            List< List<Statement> > elifCode = new ArrayList<>();
+            List <Expression> elifClause = new ArrayList<>();    
+            while(match(TokenType.ELIF)) {    
+                hasElif = true;            
+                consume(TokenType.LEFT_PAREN, "Expected a '(' token.");
+                Expression clause = expression();
+                consume(TokenType.RIGHT_PAREN, "Expected a ')' token");
+                consume(TokenType.LEFT_BRACE, "Exprected a '{' token");
+                List<Statement> code = new ArrayList<>(); 
+                while(!match(TokenType.RIGHT_BRACE) && !isAtEnd()) {
+                    try{
+                        if(peek().type == TokenType.VAR) {
+                            throw error(previous(), "Can't declare variables in an 'elif' block.");
+                        }
+                        code.add(block()); 
+                    } catch(ParseError error) {
+                        continue;
+                    }
+                }
+
+                if(isAtEnd() && previous().type != TokenType.RIGHT_BRACE) {
+                    throw error(previous(), "Expected a '{' token."); 
+                }   
+
+                
+                elifClause.add(clause);
+                elifCode.add(code);
+            }
+            List<Statement> elseCode = new ArrayList<>();
+
+            if(match(TokenType.ELSE)) {
+                hasElse = true;
+                consume(TokenType.LEFT_BRACE, "Exprected a '{' token"); 
+                while(!match(TokenType.RIGHT_BRACE) && !isAtEnd()) {
+                    try{
+                        if(peek().type == TokenType.VAR) {
+                            throw error(previous(), "Can't declare variables in an 'else' block.");
+                        }
+                        elseCode.add(block()); 
+                    } catch(ParseError error) {
+                        continue;
+                    }
+                }
+
+                if(isAtEnd() && previous().type != TokenType.RIGHT_BRACE) {
+                    throw error(previous(), "Expected a '{' token."); 
+                }   
+
+
+            }
+
+            return new If(ifClause, ifCode, (hasElif) ? elifClause : null, (hasElif) ? elifCode : null, (hasElse) ? elseCode : null); 
+
+        }
+
+        if(match(TokenType.ELSE)) {
+            throw error(previous(), "An 'else' block must be preceded by an 'if' block.");
+        }
+
+        if(match(TokenType.PRINT)) {
+            Expression expr = expression(); 
+            checkSemiColon();
+            return new Print(expr);  
+        }
+
+        if(match(TokenType.RETURN)) {
+            Expression expr = expression();
+            checkSemiColon();
+            return new Return(expr); 
+        }
+
+        Expression expr = expression();
+        checkSemiColon();
+        return new Expr(expr); 
+    }
+
+    private Var forDeclaration() {
+        
+        if(match(TokenType.VAR)) {
+            if(match(TokenType.IDENTIFIER)) {
+                Token name = previous();
+                if(match(TokenType.EQUAL)) {
+                    Expression value = expression(); 
+                    return new Var(name, value); 
+                } else {
+                    throw error(previous(), "Can't declare a variable without initialization in a 'for' statement.");
+                }
+            } else {
+                throw error(previous(), "The keyword 'var' must be followed by an identifier.");
+            }
+        } else if(peek().type == TokenType.SEMICOLON) {
+            return null;
+        }
+
+        throw error(previous(), "'for' statement must begin with an initializing declaration.");
     }
 
 
     private Expression expression() {
-        return comma(); 
+        return comma();
     }
 
     private Expression comma() {
-        Expression expr = ternary();
+        Expression expr = assignment();
 
         if(match(TokenType.COMMA)) {
             Token operator = previous();
@@ -40,8 +303,22 @@ public class Parser {
         return expr;
     }
 
+    private Expression assignment() {
+        Expression expr = ternary(); 
+        if(match(TokenType.EQUAL)) {
+            if(expr instanceof Variable) {
+                Token name = ((Variable) expr).name; 
+                Expression value = expression(); 
+                return new Assign(name, value);
+            } else { 
+                throw error(previous(), "Can't assign to an expression."); 
+            }
+        }
+        return expr;
+    }
+
     private Expression ternary() {
-        Expression expr = equality();
+        Expression expr = logic_or();
         if(match(TokenType.QUESTION)) {
             Token operator1_2 = previous(); 
             Expression sec_expr = ternary();
@@ -51,6 +328,26 @@ public class Parser {
                 return new Ternary(expr, operator1_2, sec_expr, operator2_3, third_expr); 
             } 
             throw error(previous(), "Expected ':' as the second operator of the ternary operator '?:'");
+        }
+        return expr;
+    }
+
+    private Expression logic_or() {
+        Expression expr = logic_and(); 
+        if(match(TokenType.OR)) {
+            Token operator = previous();
+            Expression rexpr = logic_or();
+            return new Logical(expr, operator, rexpr);  
+        }
+        return expr;
+    }
+
+    private Expression logic_and() {
+        Expression expr = equality(); 
+        if(match(TokenType.AND)) {
+            Token operator = previous();
+            Expression rexpr = logic_and();
+            return new Logical(expr, operator, rexpr); 
         }
         return expr;
     }
@@ -94,7 +391,7 @@ public class Parser {
 
     private Expression factor() {
         Expression expr = unary(); 
-        if(match(TokenType.SLASH, TokenType.STAR)) {
+        if(match(TokenType.SLASH, TokenType.STAR)) {          
             Token operator = previous(); 
             Expression right_expr = factor(); 
             return new Binary(expr, operator, right_expr);
@@ -108,9 +405,26 @@ public class Parser {
             Expression expr = primary(); 
             return new Unary(operator, expr); 
         }
-        Expression expr = primary();
+        Expression expr = callable();
         return expr;
 
+    }
+
+    private Expression callable() {
+        Expression expr = primary();
+        if(expr instanceof Variable) {
+            while(match(TokenType.LEFT_PAREN)) {
+                List<Expression> arguments = new ArrayList<>();
+                while(!match(TokenType.RIGHT_PAREN)) {
+                    arguments.add(ternary());
+                    if(peek().type != TokenType.RIGHT_PAREN) {
+                        consume(TokenType.COMMA, "Expected a ',' to separate the arguments.");
+                    }
+                }
+                expr = new Callable(expr, previous(), arguments); 
+            }
+        }
+        return expr;
     }
 
     private Expression primary() {
@@ -125,9 +439,12 @@ public class Parser {
 
             return new Grouping(expr); 
         }
+        if(match(TokenType.IDENTIFIER)) { 
+            return new Variable(previous());
+        }
 
-        error(peek(), "Unidentified Token."); 
-        return null; 
+        throw error(peek(), "Unidentified Token."); 
+
     }
 
 
@@ -147,6 +464,9 @@ public class Parser {
         return new ParseError();
     }
 
+    private void addErrorInfo(String message) {
+
+    }
 
     private void synchronize() {
         getNext(); 
@@ -188,7 +508,9 @@ public class Parser {
         return tokens.get(current - 1); 
     }
 
-
+    void checkSemiColon() {
+        consume(TokenType.SEMICOLON, "Expected ';' after statement.");
+    }
 
     private Token peek() {
         return tokens.get(current); 

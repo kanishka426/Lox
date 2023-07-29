@@ -1,14 +1,31 @@
 package lox;
-
-abstract class Expression {
+import java.util.List;abstract class Expression {
 	abstract <T> T accept(Visitor<T> visitor);
+	interface Visitor<T> { 
+		T visitAssign(Assign expression);
+		T visitGrouping(Grouping expression);
+		T visitLogical(Logical expression);
+		T visitUnary(Unary expression);
+		T visitBinary(Binary expression);
+		T visitTernary(Ternary expression);
+		T visitLiteral(Literal expression);
+		T visitVariable(Variable expression);
+		T visitCallable(Callable expression);
+	}
 }
-interface Visitor<T> { 
-	T visitGrouping(Grouping expression);
-	T visitUnary(Unary expression);
-	T visitBinary(Binary expression);
-	T visitTernary(Ternary expression);
-	T visitLiteral(Literal expression);
+
+class Assign extends Expression {
+	final Token name;
+	final Expression value;
+
+	Assign(Token name, Expression value) {
+		this.name = name;
+		this.value = value;
+	}
+	@Override
+	<T> T accept(Visitor<T> visitor) {
+		return visitor.visitAssign(this);
+	}
 }
 
 class Grouping extends Expression {
@@ -20,6 +37,22 @@ class Grouping extends Expression {
 	@Override
 	<T> T accept(Visitor<T> visitor) {
 		return visitor.visitGrouping(this);
+	}
+}
+
+class Logical extends Expression {
+	final Expression left_expr;
+	final Token operator;
+	final Expression right_expr;
+
+	Logical(Expression left_expr, Token operator, Expression right_expr) {
+		this.left_expr = left_expr;
+		this.operator = operator;
+		this.right_expr = right_expr;
+	}
+	@Override
+	<T> T accept(Visitor<T> visitor) {
+		return visitor.visitLogical(this);
 	}
 }
 
@@ -82,5 +115,33 @@ class Literal extends Expression {
 	@Override
 	<T> T accept(Visitor<T> visitor) {
 		return visitor.visitLiteral(this);
+	}
+}
+
+class Variable extends Expression {
+	final Token name;
+
+	Variable(Token name) {
+		this.name = name;
+	}
+	@Override
+	<T> T accept(Visitor<T> visitor) {
+		return visitor.visitVariable(this);
+	}
+}
+
+class Callable extends Expression {
+	final Expression name;
+	final Token paren;
+	final List<Expression> arguments;
+
+	Callable(Expression name, Token paren, List<Expression> arguments) {
+		this.name = name;
+		this.paren = paren;
+		this.arguments = arguments;
+	}
+	@Override
+	<T> T accept(Visitor<T> visitor) {
+		return visitor.visitCallable(this);
 	}
 }

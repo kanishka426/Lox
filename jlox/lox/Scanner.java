@@ -22,6 +22,7 @@ public class Scanner {
         keywords.put("and",    TokenType.AND);
         keywords.put("class",  TokenType.CLASS);
         keywords.put("else",   TokenType.ELSE);
+        keywords.put("elif",   TokenType.ELIF);
         keywords.put("false",  TokenType.FALSE);
         keywords.put("for",    TokenType.FOR);
         keywords.put("fun",    TokenType.FUN);

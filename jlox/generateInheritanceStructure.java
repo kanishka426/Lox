@@ -23,13 +23,40 @@ public class generateInheritanceStructure {
 
     private static void generateStructure(String output_file) throws IOException {
         FileWriter writer = new FileWriter(output_file); 
-        String baseName = "Expression";
+        writer.write("package lox;\n");
+        writer.write("import java.util.List;\n");
+        
+        
+        // String baseName = "Expression";
+        // List<String> types = new ArrayList<>(); 
+        // types.add("Assign : Token name, Expression value"); 
+        // types.add("Grouping : Expression expr"); 
+        // types.add("Logical : Expression left_expr, Token operator, Expression right_expr"); 
+        // types.add("Unary : Token operator, Expression expr");
+        // types.add("Binary : Expression left_expr, Token operator, Expression right_expr");
+        // types.add("Ternary : Expression first_expr, Token operator1_2, Expression sec_expr, Token operator2_3, Expression third_expr"); 
+        // types.add("Literal : Object value"); 
+        // types.add("Variable : Token name");
+        // types.add("Callable : Expression name, Token paren, List<Expression> arguments");
+    
+
+        String baseName = "Statement";
         List<String> types = new ArrayList<>(); 
-        types.add("Grouping : Expression expr"); 
-        types.add("Unary : Token operator, Expression expr");
-        types.add("Binary : Expression left_expr, Token operator, Expression right_expr");
-        types.add("Ternary : Expression first_expr, Token operator1_2, Expression sec_expr, Token operator2_3, Expression third_expr"); 
-        types.add("Literal : Object value"); 
+        types.add("Print : Expression expr"); 
+        types.add("Return : Expression expr");
+        types.add("Expr : Expression expr");
+        types.add("Var : Token name, Expression value");
+        types.add("Block : List<Statement> statements"); 
+        types.add("If : Expression ifClause, List<Statement> ifCode, List<Expression> elifClause, List<List<Statement>> elifCode, List<Statement> elseCode");
+        types.add("While : Expression whileClause, List<Statement> whileCode"); 
+        types.add("For : Var init, Expression forClause, Expression forComp, List<Statement> forCode"); 
+        types.add("LoxFunction : Token name, List<Token> parameters, List<Statement> funCode");
+
+
+    
+    
+    
+    
         writeStructure(writer, baseName, types); 
     }
 
@@ -37,11 +64,11 @@ public class generateInheritanceStructure {
         writer.write(getIndentation() + "abstract class " + baseName + " {\n");
         indentation += 1;
         writer.write(getIndentation() + "abstract <T> T accept(Visitor<T> visitor);\n");
+        writeVisitor(writer, types);
         indentation -= 1;
         writer.write(getIndentation() + "}\n"); 
 
-        writeVisitor(writer, types);
-
+   
 
 
         for(String type: types) {
