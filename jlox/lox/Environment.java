@@ -11,28 +11,21 @@ public class Environment {
     }
 
     public void put(Token name, Object value) {
-        values.put(name.lexeme, value); 
+        values.put(name.lexeme, value);
     }
 
-    public Object get(Token name) {
-        if(values.containsKey(name.lexeme)) {
-            return values.get(name.lexeme);
-        } else {
-            if(parent == null)
-                throw new EnvironmentError().noNameError(name);
-            else 
-                return parent.get(name); 
-        }
+    public Object get(Token name, int scope) {
+        if(scope == 0) 
+            return values.get(name.lexeme); 
+        else
+            return parent.get(name, scope - 1);
     }
 
-    public void assign(Token name, Object value) {
-        if(values.containsKey(name.lexeme)) {
+    public void assign(Token name, Object value, int scope) {
+        if(scope == 0) {
             values.put(name.lexeme, value);
         } else {
-            if(parent == null) 
-                throw new EnvironmentError().noNameError(name);
-            else 
-                parent.assign(name, value); 
+            parent.assign(name, value, scope - 1);
         }
     }
 

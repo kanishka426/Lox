@@ -42,11 +42,16 @@ class Lox{
         List<Token> tokens = scanner.scanTokens();
         Parser parser = new Parser(tokens);
         List<Statement> program = parser.parse(); 
+        Interpreter interpreter = new Interpreter();
+        Resolver resolver = new Resolver(interpreter);
+
         if(!hadError) {
-            Interpreter interpreter = new Interpreter(); 
-            try {
-                interpreter.interpret(program);
-            } catch(InterpreterError error) {}        
+            resolver.performResolution(program);
+            if(!hadError) {
+                try {
+                    interpreter.interpret(program);
+                } catch(InterpreterError error) {}
+            }        
         }  
     }
 

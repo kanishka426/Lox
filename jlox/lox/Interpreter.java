@@ -1,16 +1,23 @@
 package lox;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
 
 
 public class Interpreter implements Expression.Visitor<Object>, Statement.Visitor<Void> {
-    private Environment env;
-
+    public Environment env;
+    private Map<Expression, Integer> scopes = new HashMap<>();
+ 
     Interpreter() {
         env = new Environment(null);
     } 
     Interpreter(Environment parent) {
         env = new Environment(parent); 
+    }
+
+    public void resolve(Expression expr, int scope) {
+        scopes.put(expr, scope); 
     }
 
     String stringify(Object value) {
@@ -39,6 +46,18 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
         env.put(statement.name, funcObject); 
         return null;
     }
+
+    @Override
+    public Void visitLoxClass(LoxClass statement) {
+        Map<String, FunctionObject> methods = new HashMap<>(); 
+
+        for(LoxFunction stmt: statement.methods) {
+            methods.put(stmt.name.lexeme, new FunctionObject(stmt.parameters, stmt.funCode, env)); 
+        }
+        env.put(statement.name, new ClassObject(statement.name, methods));
+        return null; 
+    }
+    
 
     @Override 
     public Void visitBlock(Block statement) {
@@ -90,12 +109,14 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
             return null;
         }
 
-        for(int i = 0; i < statement.elifClause.size(); i++) {
-            if(isTruth(statement.elifClause.get(i))) {
-                for(Statement stmt: statement.elifCode.get(i)) {
-                    execute(stmt); 
+        if(statement.elifClause != null) {
+            for(int i = 0; i < statement.elifClause.size(); i++) {
+                if(isTruth(statement.elifClause.get(i))) {
+                    for(Statement stmt: statement.elifCode.get(i)) {
+                        execute(stmt); 
+                    }
+                    return null;
                 }
-                return null;
             }
         }
 
@@ -104,7 +125,6 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
                 execute(stmt); 
             }
         }
-
 
         return null;
     }
@@ -115,9 +135,7 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
         Environment prev = env;
         env = nenv;
         while(isTruth(statement.whileClause)) {
-            for(Statement stmt: statement.whileCode) {
-                execute(stmt); 
-            }
+            execute(statement.whileCode);
         }
         env = prev;
         return null;
@@ -133,9 +151,7 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
         if(statement.init != null) execute(statement.init); 
 
         while(isTruth(statement.forClause) || statement.forClause == null) {
-            for(Statement stmt: statement.forCode) {
-                execute(stmt);
-            }
+            execute(statement.forCode);
             if(statement.forComp != null) statement.forComp.accept(this);
         }
         env = prev; 
@@ -144,12 +160,48 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
 
 
 
+
+
+
     @Override
     public Object visitAssign(Assign expr) {
         Object value = expr.value.accept(this); 
-        env.assign(expr.name, value);
+        env.assign(expr.name, value, scopes.get(expr));
         return value;
     }
+
+
+    @Override
+    public Object visitGet(Get expr) {
+        Object getFromObject = expr.variable.accept(this); 
+        if(getFromObject instanceof InstanceObject) {
+            InstanceObject getFrom = (InstanceObject) getFromObject;
+            return getFrom.getField(expr.name); 
+        } else {
+            throw new GetError().notLoxObject(expr.name); 
+        }
+    }
+
+    @Override
+    public Object visitSet(Set expr) {
+        Object getFromObject = expr.variable.accept(this); 
+        if(getFromObject instanceof InstanceObject) {
+            InstanceObject getFrom = (InstanceObject) getFromObject;
+            Object value = expr.value.accept(this); 
+            getFrom.set(expr.name, value); 
+            return value;
+        } else {
+            throw new GetError().notLoxObject(expr.name); 
+        }
+        
+    }
+
+
+    @Override
+    public Object visitThis(This expr) {
+        return env.get(expr.dis, scopes.get(expr));
+    }
+
 
 
     @Override
@@ -295,22 +347,22 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
 
     @Override
     public Object visitVariable(Variable expr) {
-        return env.get(expr.name); 
+        return env.get(expr.name, scopes.get(expr)); 
     }
 
 
     @Override 
     public Object visitCallable(Callable expr) {
         Object callableValue = expr.name.accept(this); 
-        if(callableValue instanceof CallableEntity) {
+        if(callableValue instanceof CallableEntity && callableValue != null) {
             CallableEntity callableObject = (CallableEntity) callableValue;
             List<Object> arguments = new ArrayList<>();
             for(Expression e: expr.arguments) {
                 arguments.add(e.accept(this));
             }
-            return callableObject.call(arguments); 
+            return callableObject.call(arguments, this); 
         } else {
-            throw new CallableError(callableValue, expr.paren);
+            throw new CallableError(expr.paren).invalidCallable(callableValue);
         }
     }
 
@@ -338,7 +390,7 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
 }
 
 
-abstract class InterpreterError extends RuntimeException{
+abstract class InterpreterError extends RuntimeException {
 }
 
 class BinaryError extends InterpreterError {
@@ -364,21 +416,36 @@ class BinaryError extends InterpreterError {
 }
 
 class CallableError extends InterpreterError {
-    private Object value;
     private Token location;
-    CallableError(Object value, Token location) {
-        this.value = value;
+    CallableError(Token location) {
         this.location = location;
     }
-    public InterpreterError invalidCallable() {
-        Lox.runtimeError(location.line, "The object of type " + value.getClass().getName() + " cannot be called.");
+    public InterpreterError invalidCallable(Object value) {
+        Lox.runtimeError(location.line, "The object of type " + ((value != null) ? value.getClass().getName() : "nil") + " cannot be called.");
+        return this;
+    }
+    public InterpreterError invalidNumberOfArguments(int given, int expected) {
+        Lox.runtimeError(location.line, "The number of arguments were not as expected. Given: " + Integer.toString(given) + ", Expected: " + Integer.toString(expected));
         return this;
     }
 }
 
-class EnvironmentError extends InterpreterError {
-    public InterpreterError noNameError(Token name) {
-        Lox.runtimeError(name.line, "'" + name.lexeme + "'" + " is not defined in the environment.");
+class GetError extends InterpreterError {
+    public InterpreterError notLoxObject(Token name) {
+        Lox.runtimeError(name.line, "The dot accessor can only run on Lox Objects.");
+        return this;
+    }
+}
+
+class InstanceError extends InterpreterError {
+    private InstanceObject obj;
+
+    InstanceError(InstanceObject obj) {
+        this.obj = obj;
+    }
+
+    public InterpreterError fieldNotFound(Token name) {
+        Lox.runtimeError(name.line, "The object does contain the field name '" + name.lexeme + "'.");
         return this;
     }
 }

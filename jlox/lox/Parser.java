@@ -27,6 +27,41 @@ public class Parser {
     }
 
 
+    private LoxFunction parseFunction(FunctionType type) {
+        if(match(TokenType.IDENTIFIER)) {
+            Token name = previous(); 
+            List<Token> parameters = new ArrayList<>();
+            consume(TokenType.LEFT_PAREN, "Expected a '(' after function identifier."); 
+            while(!match(TokenType.RIGHT_PAREN)) {
+                Expression para = primary(); 
+                if(para instanceof Variable) {
+                    parameters.add(((Variable) para).name);
+                } else {
+                    error(previous(), "Parameters can only be identifiers and not other expressions.");
+                }
+                if(peek().type != TokenType.RIGHT_PAREN) {
+                    consume(TokenType.COMMA, "Expected a ',' to separate the parameters.");
+                }
+            }
+            consume(TokenType.LEFT_BRACE, "Expected a '{' token.");
+            List<Statement> funCode = new ArrayList<>();
+            while(!match(TokenType.RIGHT_BRACE) && !isAtEnd()) {
+                try {
+                    funCode.add(declaration());
+                } catch(ParseError error) {
+                    continue;
+                }
+            }
+            if(isAtEnd() && previous().type != TokenType.RIGHT_BRACE) {
+                throw error(previous(), "Expected a '}' token."); 
+            }
+
+            return new LoxFunction(name, parameters, funCode, type); 
+
+        }
+        throw error(previous(), "A function statement must have an identifier.");
+    }
+
     private Statement declaration() {
         if(match(TokenType.VAR)) {
             if(match(TokenType.IDENTIFIER)) {
@@ -43,35 +78,18 @@ public class Parser {
                 throw error(previous(), "Expected Identifier for variable declaration.");    
             }
         } else if(match(TokenType.FUN)) {
+            return parseFunction(FunctionType.FUNCTION);
+        } else if(match(TokenType.CLASS)) {
             if(match(TokenType.IDENTIFIER)) {
                 Token name = previous(); 
-                List<Token> parameters = new ArrayList<>();
-                while(!match(TokenType.RIGHT_PAREN)) {
-                    Expression para = primary(); 
-                    if(para instanceof Variable) {
-                        parameters.add(((Variable) para).name);
-                    } else {
-                        error(previous(), "Parameters can only be identifiers and not other expressions.");
-                    }
-                    if(peek().type != TokenType.RIGHT_PAREN) {
-                        consume(TokenType.COMMA, "Expected a ',' to separate the parameters.");
-                    }
-                }
                 consume(TokenType.LEFT_BRACE, "Expected a '{' token.");
-                List<Statement> funCode = new ArrayList<>();
-                while(!match(TokenType.RIGHT_BRACE) && !isAtEnd()) {
-                    try {
-                        funCode.add(declaration());
-                    } catch(ParseError error) {
-                        continue;
-                    }
+                List<LoxFunction> methods = new ArrayList<>(); 
+                while(!match(TokenType.RIGHT_BRACE)) {
+                    methods.add(parseFunction(FunctionType.METHOD));
                 }
-                if(isAtEnd() && previous().type != TokenType.RIGHT_BRACE) {
-                    throw error(previous(), "Expected a '{' token."); 
-                }
-
-                return new LoxFunction(name, parameters, funCode); 
-
+                return new LoxClass(name, methods); 
+            } else {
+                throw error(previous(), "A class statement must have an identifier.");
             }
         }
 
@@ -85,7 +103,7 @@ public class Parser {
 
             while(!match(TokenType.RIGHT_BRACE) && !isAtEnd()) {
                 try {
-                    statements.add(block());
+                    statements.add(declaration());
                 } catch (ParseError error) {
                     continue;
                 }
@@ -138,7 +156,7 @@ public class Parser {
                 throw error(previous(), "Expected a '{' token."); 
             }   
             
-            return new For(init, forClause, forComp, forCode);
+            return new For(init, forClause, forComp, new Block(forCode));
 
 
         }
@@ -162,7 +180,7 @@ public class Parser {
             }   
 
 
-            return new While(whileClause, whileCode);
+            return new While(whileClause, new Block(whileCode));
         }
         
         
@@ -176,8 +194,8 @@ public class Parser {
             List<Statement> ifCode = new ArrayList<>();
             while(!match(TokenType.RIGHT_BRACE) && !isAtEnd()) {
                 try{
-                    if(peek().type == TokenType.VAR) {
-                        throw error(previous(), "Can't declare variables in an 'if' block.");
+                    if(match(TokenType.VAR, TokenType.FUN, TokenType.CLASS)) {
+                        throw error(previous(), "Can't declare anything in an 'if' block.");
                     }
                     ifCode.add(block()); 
                 } catch(ParseError error) {
@@ -258,7 +276,7 @@ public class Parser {
         if(match(TokenType.RETURN)) {
             Expression expr = expression();
             checkSemiColon();
-            return new Return(expr); 
+            return new Return(previous(), expr); 
         }
 
         Expression expr = expression();
@@ -304,17 +322,33 @@ public class Parser {
     }
 
     private Expression assignment() {
-        Expression expr = ternary(); 
+        Expression expr = set(); 
         if(match(TokenType.EQUAL)) {
             if(expr instanceof Variable) {
                 Token name = ((Variable) expr).name; 
                 Expression value = expression(); 
                 return new Assign(name, value);
+            } else if(expr instanceof This) {
+                throw error(previous(), "Can't assign to the 'this' keyword."); 
             } else { 
                 throw error(previous(), "Can't assign to an expression."); 
             }
         }
         return expr;
+    }
+
+    private Expression set() {
+        Expression expr = ternary(); 
+        if(expr instanceof Get) {
+            if(match(TokenType.EQUAL)) {
+                Get getExpr = (Get) expr;
+                Expression value = expression(); 
+                return new Set(getExpr.variable, getExpr.name, value);
+            } else{
+                return expr;
+            }
+        }
+        return expr; 
     }
 
     private Expression ternary() {
@@ -411,8 +445,8 @@ public class Parser {
     }
 
     private Expression callable() {
-        Expression expr = primary();
-        if(expr instanceof Variable) {
+        Expression expr = get();
+        if(expr instanceof Get || expr instanceof Variable) {
             while(match(TokenType.LEFT_PAREN)) {
                 List<Expression> arguments = new ArrayList<>();
                 while(!match(TokenType.RIGHT_PAREN)) {
@@ -426,6 +460,22 @@ public class Parser {
         }
         return expr;
     }
+
+
+    private Expression get() {
+        Expression expr = primary();
+        while(match(TokenType.DOT)) {
+            if(expr instanceof Variable || expr instanceof Get || expr instanceof This) {
+                if(match(TokenType.IDENTIFIER)) {
+                    expr = new Get(expr, previous()); 
+                } 
+            } else {
+                throw error(previous(), "The dot accessor can only run on objects.");
+            }
+        }
+        return expr;
+    }
+
 
     private Expression primary() {
         
@@ -441,6 +491,10 @@ public class Parser {
         }
         if(match(TokenType.IDENTIFIER)) { 
             return new Variable(previous());
+        }
+
+        if(match(TokenType.THIS)) {
+            return new This(previous()); 
         }
 
         throw error(peek(), "Unidentified Token."); 

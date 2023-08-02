@@ -1,5 +1,6 @@
 package lox;
-import java.util.List;abstract class Expression {
+import java.util.List;
+abstract class Expression {
 	abstract <T> T accept(Visitor<T> visitor);
 	interface Visitor<T> { 
 		T visitAssign(Assign expression);
@@ -10,6 +11,9 @@ import java.util.List;abstract class Expression {
 		T visitTernary(Ternary expression);
 		T visitLiteral(Literal expression);
 		T visitVariable(Variable expression);
+		T visitThis(This expression);
+		T visitGet(Get expression);
+		T visitSet(Set expression);
 		T visitCallable(Callable expression);
 	}
 }
@@ -127,6 +131,48 @@ class Variable extends Expression {
 	@Override
 	<T> T accept(Visitor<T> visitor) {
 		return visitor.visitVariable(this);
+	}
+}
+
+class This extends Expression {
+	final Token dis;
+
+	This(Token dis) {
+		this.dis = dis;
+	}
+	@Override
+	<T> T accept(Visitor<T> visitor) {
+		return visitor.visitThis(this);
+	}
+}
+
+class Get extends Expression {
+	final Expression variable;
+	final Token name;
+
+	Get(Expression variable, Token name) {
+		this.variable = variable;
+		this.name = name;
+	}
+	@Override
+	<T> T accept(Visitor<T> visitor) {
+		return visitor.visitGet(this);
+	}
+}
+
+class Set extends Expression {
+	final Expression variable;
+	final Token name;
+	final Expression value;
+
+	Set(Expression variable, Token name, Expression value) {
+		this.variable = variable;
+		this.name = name;
+		this.value = value;
+	}
+	@Override
+	<T> T accept(Visitor<T> visitor) {
+		return visitor.visitSet(this);
 	}
 }
 

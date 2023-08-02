@@ -1,1 +1,3 @@
-Error checking for 'for' loops
+In for loops, forCode gets executed in a new scope. This is not ideal. 
+Implement 'this'; 
+Implement 'get' and 'set' expressions.

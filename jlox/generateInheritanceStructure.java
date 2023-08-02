@@ -37,20 +37,24 @@ public class generateInheritanceStructure {
         // types.add("Ternary : Expression first_expr, Token operator1_2, Expression sec_expr, Token operator2_3, Expression third_expr"); 
         // types.add("Literal : Object value"); 
         // types.add("Variable : Token name");
+        // types.add("This : Token dis"); 
+        // types.add("Get : Expression variable, Token name"); 
+        // types.add("Set : Expression variable, Token name, Expression value"); 
         // types.add("Callable : Expression name, Token paren, List<Expression> arguments");
     
 
         String baseName = "Statement";
         List<String> types = new ArrayList<>(); 
         types.add("Print : Expression expr"); 
-        types.add("Return : Expression expr");
+        types.add("Return : Token name, Expression expr");
         types.add("Expr : Expression expr");
         types.add("Var : Token name, Expression value");
         types.add("Block : List<Statement> statements"); 
         types.add("If : Expression ifClause, List<Statement> ifCode, List<Expression> elifClause, List<List<Statement>> elifCode, List<Statement> elseCode");
-        types.add("While : Expression whileClause, List<Statement> whileCode"); 
-        types.add("For : Var init, Expression forClause, Expression forComp, List<Statement> forCode"); 
-        types.add("LoxFunction : Token name, List<Token> parameters, List<Statement> funCode");
+        types.add("While : Expression whileClause, Block whileCode"); 
+        types.add("For : Var init, Expression forClause, Expression forComp, Block forCode"); 
+        types.add("LoxFunction : Token name, List<Token> parameters, List<Statement> funCode, FunctionType type");
+        types.add("LoxClass : Token name, List<LoxFunction> methods");
 
 
     

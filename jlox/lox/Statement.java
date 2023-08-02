@@ -12,6 +12,7 @@ abstract class Statement {
 		T visitWhile(While expression);
 		T visitFor(For expression);
 		T visitLoxFunction(LoxFunction expression);
+		T visitLoxClass(LoxClass expression);
 	}
 }
 
@@ -28,9 +29,11 @@ class Print extends Statement {
 }
 
 class Return extends Statement {
+	final Token name;
 	final Expression expr;
 
-	Return(Expression expr) {
+	Return(Token name, Expression expr) {
+		this.name = name;
 		this.expr = expr;
 	}
 	@Override
@@ -99,9 +102,9 @@ class If extends Statement {
 
 class While extends Statement {
 	final Expression whileClause;
-	final List<Statement> whileCode;
+	final Block whileCode;
 
-	While(Expression whileClause, List<Statement> whileCode) {
+	While(Expression whileClause, Block whileCode) {
 		this.whileClause = whileClause;
 		this.whileCode = whileCode;
 	}
@@ -115,9 +118,9 @@ class For extends Statement {
 	final Var init;
 	final Expression forClause;
 	final Expression forComp;
-	final List<Statement> forCode;
+	final Block forCode;
 
-	For(Var init, Expression forClause, Expression forComp, List<Statement> forCode) {
+	For(Var init, Expression forClause, Expression forComp, Block forCode) {
 		this.init = init;
 		this.forClause = forClause;
 		this.forComp = forComp;
@@ -133,14 +136,30 @@ class LoxFunction extends Statement {
 	final Token name;
 	final List<Token> parameters;
 	final List<Statement> funCode;
+	final FunctionType type;
 
-	LoxFunction(Token name, List<Token> parameters, List<Statement> funCode) {
+	LoxFunction(Token name, List<Token> parameters, List<Statement> funCode, FunctionType type) {
 		this.name = name;
 		this.parameters = parameters;
 		this.funCode = funCode;
+		this.type = type;
 	}
 	@Override
 	<T> T accept(Visitor<T> visitor) {
 		return visitor.visitLoxFunction(this);
+	}
+}
+
+class LoxClass extends Statement {
+	final Token name;
+	final List<LoxFunction> methods;
+
+	LoxClass(Token name, List<LoxFunction> methods) {
+		this.name = name;
+		this.methods = methods;
+	}
+	@Override
+	<T> T accept(Visitor<T> visitor) {
+		return visitor.visitLoxClass(this);
 	}
 }
