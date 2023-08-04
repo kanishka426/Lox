@@ -15,6 +15,7 @@ abstract class Expression {
 		T visitGet(Get expression);
 		T visitSet(Set expression);
 		T visitCallable(Callable expression);
+		T visitSuper(Super expression);
 	}
 }
 
@@ -189,5 +190,19 @@ class Callable extends Expression {
 	@Override
 	<T> T accept(Visitor<T> visitor) {
 		return visitor.visitCallable(this);
+	}
+}
+
+class Super extends Expression {
+	final Token ssup;
+	final Token name;
+
+	Super(Token ssup, Token name) {
+		this.ssup = ssup;
+		this.name = name;
+	}
+	@Override
+	<T> T accept(Visitor<T> visitor) {
+		return visitor.visitSuper(this);
 	}
 }

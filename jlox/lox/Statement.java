@@ -152,10 +152,12 @@ class LoxFunction extends Statement {
 
 class LoxClass extends Statement {
 	final Token name;
+	final Variable parentClass;
 	final List<LoxFunction> methods;
 
-	LoxClass(Token name, List<LoxFunction> methods) {
+	LoxClass(Token name, Variable parentClass, List<LoxFunction> methods) {
 		this.name = name;
+		this.parentClass = parentClass;
 		this.methods = methods;
 	}
 	@Override

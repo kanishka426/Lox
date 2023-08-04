@@ -29,7 +29,12 @@ public class Parser {
 
     private LoxFunction parseFunction(FunctionType type) {
         if(match(TokenType.IDENTIFIER)) {
-            Token name = previous(); 
+            Token name = previous();
+            if(type == FunctionType.METHOD) {
+                if(name.lexeme.equals("init")) {
+                    type = FunctionType.INITIALIZER; 
+                }
+            }
             List<Token> parameters = new ArrayList<>();
             consume(TokenType.LEFT_PAREN, "Expected a '(' after function identifier."); 
             while(!match(TokenType.RIGHT_PAREN)) {
@@ -81,13 +86,22 @@ public class Parser {
             return parseFunction(FunctionType.FUNCTION);
         } else if(match(TokenType.CLASS)) {
             if(match(TokenType.IDENTIFIER)) {
-                Token name = previous(); 
+                Token name = previous();
+                Variable parentClass = null; 
+                if(match(TokenType.LESS)) {
+                    Expression pClassExpr = primary();
+                    if(pClassExpr instanceof Variable)
+                        parentClass = (Variable) pClassExpr;
+                    else {
+                        error(previous(), "A parent class has to be an identifier."); 
+                    } 
+                }
                 consume(TokenType.LEFT_BRACE, "Expected a '{' token.");
                 List<LoxFunction> methods = new ArrayList<>(); 
                 while(!match(TokenType.RIGHT_BRACE)) {
                     methods.add(parseFunction(FunctionType.METHOD));
                 }
-                return new LoxClass(name, methods); 
+                return new LoxClass(name, parentClass, methods); 
             } else {
                 throw error(previous(), "A class statement must have an identifier.");
             }
@@ -439,14 +453,14 @@ public class Parser {
             Expression expr = primary(); 
             return new Unary(operator, expr); 
         }
-        Expression expr = callable();
+        Expression expr = callAndGet();
         return expr;
 
     }
 
     private Expression callable() {
         Expression expr = get();
-        if(expr instanceof Get || expr instanceof Variable) {
+        if(expr instanceof Get || expr instanceof Variable || expr instanceof Super) {
             while(match(TokenType.LEFT_PAREN)) {
                 List<Expression> arguments = new ArrayList<>();
                 while(!match(TokenType.RIGHT_PAREN)) {
@@ -458,6 +472,36 @@ public class Parser {
                 expr = new Callable(expr, previous(), arguments); 
             }
         }
+        return expr;
+    }
+
+    private Expression callAndGet() {
+        Expression expr = primary(); 
+
+        while(match(TokenType.DOT, TokenType.LEFT_PAREN)) {
+            if(previous().type == TokenType.LEFT_PAREN) {
+                if(expr instanceof Get || expr instanceof Variable || expr instanceof Super || expr instanceof Callable) {
+                    List<Expression> arguments = new ArrayList<>();
+                    while(!match(TokenType.RIGHT_PAREN)) {
+                        arguments.add(ternary());
+                        if(peek().type != TokenType.RIGHT_PAREN) {
+                            consume(TokenType.COMMA, "Expected a ',' to separate the arguments.");
+                        }
+                    }
+                    expr = new Callable(expr, previous(), arguments);
+                } else {
+                    throw error(previous(), "Invalid Callable"); 
+                }
+            } else {
+                if(expr instanceof Variable || expr instanceof Get || expr instanceof This || expr instanceof Callable) {
+                    if(match(TokenType.IDENTIFIER)) {
+                        expr = new Get(expr, previous()); 
+                    } 
+                } else {
+                    throw error(previous(), "The dot accessor can only run on objects.");
+                }
+            }
+        } 
         return expr;
     }
 
@@ -491,6 +535,18 @@ public class Parser {
         }
         if(match(TokenType.IDENTIFIER)) { 
             return new Variable(previous());
+        }
+
+        if(match(TokenType.SUPER)) {
+            Token ssup = previous();
+            if(match(TokenType.DOT)) {
+                if(match(TokenType.IDENTIFIER)) {
+                    return new Super(ssup, previous());
+                } else {
+                    error(previous(), "Expected an identifier after the dot accessor.");
+                }
+            }
+            return new Super(ssup, null); 
         }
 
         if(match(TokenType.THIS)) {

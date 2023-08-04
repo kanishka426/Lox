@@ -112,8 +112,8 @@ public class Resolver implements Statement.Visitor<Void>, Expression.Visitor<Voi
             scopes.peek().put(statement.name.lexeme, true);
         }
         beginScope(); 
-        if(statement.type == FunctionType.METHOD) {
-            inFunction.add(FunctionType.METHOD); 
+        if(statement.type == FunctionType.METHOD || statement.type == FunctionType.INITIALIZER) {
+            inFunction.add(statement.type); 
             scopes.peek().put("this", true); 
             beginScope();
         }
@@ -124,7 +124,7 @@ public class Resolver implements Statement.Visitor<Void>, Expression.Visitor<Voi
         
         endScope(); 
         inFunction.pop(); 
-        if(statement.type == FunctionType.METHOD) {
+        if(statement.type == FunctionType.METHOD || statement.type == FunctionType.INITIALIZER) {
             endScope(); 
         }
         return null;
@@ -145,15 +145,27 @@ public class Resolver implements Statement.Visitor<Void>, Expression.Visitor<Voi
 
 
 
+    public Void visitSuper(Super expr) {
+        int scope = findBinding(expr.ssup);
+        interpreter.resolve(expr, scope);
+        return null; 
+    }
+
 
     public Void visitLoxClass(LoxClass statement) {
         scopes.peek().put(statement.name.lexeme, true); 
-        beginScope();
-        scopes.peek().put("this", true); 
+        if(statement.parentClass != null) {
+            int scope = findBinding(statement.parentClass.name); 
+            interpreter.resolve(statement.parentClass, scope);
+            beginScope();
+            scopes.peek().put("super", true);  
+        }   
         for(LoxFunction func: statement.methods) {
             resolve(func); 
         }
-        endScope(); 
+        if(statement.parentClass != null) {
+            endScope(); 
+        }
         return null;
     }
 
@@ -217,8 +229,12 @@ public class Resolver implements Statement.Visitor<Void>, Expression.Visitor<Voi
     public Void visitReturn(Return expression) {
         if(inFunction.peek() == FunctionType.NONE) {
             throw new ResolverError().returnFromGlobalFrame(expression.name); 
+        } else if(inFunction.peek() == FunctionType.INITIALIZER) {
+            if(!(expression.expr instanceof This)) {
+                throw new ResolverError().returnFromInit(expression.name); 
+            }
         }
-        resolve(expression.expr);
+        if(expression.expr != null) resolve(expression.expr);
         return null;
     }
 
@@ -287,6 +303,11 @@ class ResolverError extends RuntimeException {
     public ResolverError containsDeclaration(Token name) {
         Lox.error(name.line, "Cannot redeclare variables in frames that are not global.");
         return this;
+    }
+
+    public ResolverError returnFromInit(Token name) {
+        Lox.error(name.line, "Can't return an object that is not the instance that called the 'init' method."); 
+        return this; 
     }
     
 }

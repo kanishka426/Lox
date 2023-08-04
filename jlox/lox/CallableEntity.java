@@ -11,11 +11,13 @@ class FunctionObject implements CallableEntity {
     final List<Token> parameters;
     final List<Statement> code;
     final Environment paren_env;
+    private final boolean isInit;
 
-    FunctionObject(List<Token> parameters, List<Statement> code, Environment paren_env) {
+    FunctionObject(List<Token> parameters, List<Statement> code, Environment paren_env, boolean isInit) {
         this.parameters = parameters; 
         this.code = code;
         this.paren_env = paren_env;
+        this.isInit = isInit;
     }
 
     @Override
@@ -36,14 +38,22 @@ class FunctionObject implements CallableEntity {
             interpreter.env = prev;
             return rv.value;
         }
+
+
+        Object rv = null;
+
+        if(isInit) {
+            rv = interpreter.env.get(new Token(TokenType.THIS, "this", null, -1), 1); 
+        }
+
         interpreter.env = prev;
-        return null;
+        return rv;
     } 
 
     public FunctionObject bind(InstanceObject instance) {
         Environment env = new Environment(paren_env);
         env.put(new Token(TokenType.THIS, "this", null, -1), instance);
-        return new FunctionObject(this.parameters, this.code, env);
+        return new FunctionObject(this.parameters, this.code, env, isInit);
     }
 }
 
@@ -51,16 +61,20 @@ class FunctionObject implements CallableEntity {
 class ClassObject implements CallableEntity {
     final Token name;
     final Map<String, FunctionObject> methods;
+    final ClassObject parentClass;
 
-    ClassObject(Token name, Map<String, FunctionObject> methods) {
+    ClassObject(Token name, Map<String, FunctionObject> methods, ClassObject parentClass) {
         this.name = name;
         this.methods = methods;
+        this.parentClass = parentClass; 
     }
 
     @Override
     public Object call(List<Object> arguments, Interpreter interpreter) {
         InstanceObject instance = new InstanceObject(this); 
-
+        FunctionObject init = this.findMethod("init");
+        if(init != null) 
+            init.bind(instance).call(arguments, interpreter); 
         return instance;
     }
 
@@ -69,6 +83,8 @@ class ClassObject implements CallableEntity {
         if(methods.containsKey(name)) {
             return methods.get(name); 
         } else {
+            if(parentClass != null)
+                return parentClass.findMethod(name);
             return null;
         }
     }

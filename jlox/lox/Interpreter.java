@@ -42,7 +42,7 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
 
     @Override
     public Void visitLoxFunction(LoxFunction statement) {
-        Object funcObject = new FunctionObject(statement.parameters, statement.funCode, env); 
+        Object funcObject = new FunctionObject(statement.parameters, statement.funCode, env, false); 
         env.put(statement.name, funcObject); 
         return null;
     }
@@ -51,10 +51,29 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
     public Void visitLoxClass(LoxClass statement) {
         Map<String, FunctionObject> methods = new HashMap<>(); 
 
-        for(LoxFunction stmt: statement.methods) {
-            methods.put(stmt.name.lexeme, new FunctionObject(stmt.parameters, stmt.funCode, env)); 
+        Object pClassObject;
+        ClassObject parentClass = null;
+        if(statement.parentClass != null) {
+            pClassObject = env.get(statement.parentClass.name, scopes.get(statement.parentClass));  
+            if(pClassObject instanceof ClassObject) {
+                parentClass = (ClassObject) pClassObject;
+            }
+            else 
+                throw new LoxRuntimeError(statement.name).error("The identifier is not a Lox Class."); 
         }
-        env.put(statement.name, new ClassObject(statement.name, methods));
+
+        Environment methodEnv = env; 
+        if(statement.parentClass != null) {
+            methodEnv = new Environment(methodEnv); 
+            methodEnv.put(new Token(TokenType.SUPER, "super", null, -1), parentClass); 
+        } 
+
+        for(LoxFunction stmt: statement.methods) {
+            methods.put(stmt.name.lexeme, new FunctionObject(stmt.parameters, stmt.funCode, methodEnv, stmt.type == FunctionType.INITIALIZER)); 
+        }
+
+
+        env.put(statement.name, new ClassObject(statement.name, methods, parentClass));
         return null; 
     }
     
@@ -74,7 +93,8 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
 
     @Override
     public Void visitReturn(Return statement) {
-        Object value = statement.expr.accept(this);
+        Object value = null;
+        if(statement.expr != null) value = statement.expr.accept(this);
         throw new ReturnValue(value);
     }
 
@@ -203,6 +223,26 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
     }
 
 
+    @Override
+    public Object visitSuper(Super expr) {
+        Object value = env.get(expr.ssup, scopes.get(expr));
+        if(value instanceof ClassObject) {
+            if(expr.name != null) {
+                ClassObject parentClass = (ClassObject) value;
+                FunctionObject parentMethod = parentClass.findMethod(expr.name.lexeme) ;
+                if(parentMethod != null) {
+                    return parentMethod.bind((InstanceObject) env.get(new Token(TokenType.THIS, "this", null, expr.ssup.line), scopes.get(expr) - 1));
+                } else {
+                    throw new LoxRuntimeError(expr.ssup).error("The name doesn't resolve to a defined method."); 
+                }
+            } else {
+                return value;
+            }
+        } else {
+            throw new LoxRuntimeError(expr.ssup).error("The super keyword doesn't point to a LoxClass."); 
+        }
+    }
+
 
     @Override
     public Object visitGrouping(Grouping expr) {
@@ -238,7 +278,7 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
     @Override
     public Object visitUnary(Unary expr) {
         if(expr.operator.type == TokenType.MINUS) {
-             return - (double) expr.expr.accept(this); 
+            return - (double) expr.expr.accept(this); 
         } else {
             return !isTruth(expr.expr); 
         }
@@ -393,6 +433,18 @@ public class Interpreter implements Expression.Visitor<Object>, Statement.Visito
 abstract class InterpreterError extends RuntimeException {
 }
 
+
+class LoxRuntimeError extends InterpreterError{ 
+    Token location;
+    LoxRuntimeError(Token location) {
+        this.location = location;
+    }
+    public InterpreterError error(String message) {
+        Lox.runtimeError(location.line, message);
+        return this;
+    }
+}
+
 class BinaryError extends InterpreterError {
     private Token operator;
     private Object left_value;
@@ -414,6 +466,8 @@ class BinaryError extends InterpreterError {
         return this;
     }
 }
+
+
 
 class CallableError extends InterpreterError {
     private Token location;
